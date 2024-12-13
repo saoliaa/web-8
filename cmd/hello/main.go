@@ -29,7 +29,7 @@ type DatabaseProvider struct {
 
 // Обработчики HTTP-запросов
 func (h *Handlers) GetHello(w http.ResponseWriter, r *http.Request) {
-	msg, err := h.dbProvider.SelectHello()
+	msg, err := h.dbProvider.SelectQuery()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -46,13 +46,11 @@ func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&input)
 	if err != nil {
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
-		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
 	}
 
-	err = h.dbProvider.InsertHello(input.Msg)
+	err = h.dbProvider.InsertQuery(input.Msg)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(err.Error()))
@@ -62,7 +60,7 @@ func (h *Handlers) PostHello(w http.ResponseWriter, r *http.Request) {
 }
 
 // Методы для работы с базой данных
-func (dp *DatabaseProvider) SelectHello() (string, error) {
+func (dp *DatabaseProvider) SelectQuery() (string, error) {
 	var msg string
 
 	// Получаем одно сообщение из таблицы hello, отсортированной в случайном порядке
@@ -74,7 +72,7 @@ func (dp *DatabaseProvider) SelectHello() (string, error) {
 
 	return msg, nil
 }
-func (dp *DatabaseProvider) InsertHello(msg string) error {
+func (dp *DatabaseProvider) InsertQuery(msg string) error {
 	_, err := dp.db.Exec("INSERT INTO hello (message) VALUES ($1)", msg)
 	if err != nil {
 		return err
@@ -85,7 +83,7 @@ func (dp *DatabaseProvider) InsertHello(msg string) error {
 
 func main() {
 	// Считываем аргументы командной строки
-	address := flag.String("address", "127.0.0.1:8081", "адрес для запуска сервера")
+	address := flag.String("address", "127.0.0.1:8081", "адрес для запуска сервиса Hello")
 	flag.Parse()
 
 	// Формирование строки подключения для postgres
@@ -106,12 +104,26 @@ func main() {
 	h := Handlers{dbProvider: dp}
 
 	// Регистрируем обработчики
-	http.HandleFunc("/get", h.GetHello)
-	http.HandleFunc("/post", h.PostHello)
+	http.HandleFunc("/get", corsMiddleware(h.GetHello))
+	http.HandleFunc("/post", corsMiddleware(h.PostHello))
 
 	// Запускаем веб-сервер на указанном адресе
 	err = http.ListenAndServe(*address, nil)
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func corsMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			return
+		}
+
+		next(w, r)
 	}
 }
